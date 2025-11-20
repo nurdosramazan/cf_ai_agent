@@ -13,17 +13,11 @@ import {
   createUIMessageStreamResponse,
   type ToolSet
 } from "ai";
-import { openai } from "@ai-sdk/openai";
+
+import { createWorkersAI } from "workers-ai-provider";
 import { processToolCalls, cleanupMessages } from "./utils";
 import { tools, executions } from "./tools";
 // import { env } from "cloudflare:workers";
-
-const model = openai("gpt-4o-2024-11-20");
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -45,14 +39,14 @@ export class Chat extends AIChatAgent<Env> {
       ...tools,
       ...this.mcp.getAITools()
     };
+    const workersai = createWorkersAI({ binding: this.env.AI });
+    const model = workersai("@cf/meta/llama-3-8b-instruct");
+    //const model = workersai("@cf/google/gemma-2b-it-lora");
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        // Clean up incomplete tool calls to prevent API errors
         const cleanedMessages = cleanupMessages(this.messages);
 
-        // Process any pending tool calls from previous messages
-        // This handles human-in-the-loop confirmations for tools
         const processedMessages = await processToolCalls({
           messages: cleanedMessages,
           dataStream: writer,
@@ -117,11 +111,6 @@ export default {
       return Response.json({
         success: hasOpenAIKey
       });
-    }
-    if (!process.env.OPENAI_API_KEY) {
-      console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
-      );
     }
     return (
       // Route the request to our agent or return 404 if not found
